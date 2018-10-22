@@ -366,26 +366,24 @@ def main():
     # Build U-Net model
     # first stage
     input_layer = Input((img_size_target, img_size_target, 1))
-    output_layer = build_model(input_layer, 16, 0.5)
+    output_layer = build_model(input_layer, 32, 0.25)
     model_pre = Model(input_layer, output_layer)
     model_pre.compile(loss="binary_crossentropy", optimizer='adam', metrics=[my_iou_metric])
 
     model_pre_name = 'resnet_pre.model'
 
-    early_stopping = EarlyStopping(monitor='val_my_iou_metric', mode='max',
-                                   patience=15, verbose=1)
     model_checkpoint = ModelCheckpoint(model_pre_name, monitor='val_my_iou_metric', 
                                        mode = 'max', save_best_only=True, verbose=1)
     reduce_lr = ReduceLROnPlateau(monitor='val_my_iou_metric', mode='max', factor=0.5,
                                   patience=5, min_lr=0.0001, verbose=1)
 
-    epochs = 50
+    epochs = 100
     batch_size = 32
     history = model_pre.fit(x_train, y_train,
                             validation_data=[x_valid, y_valid], 
                             epochs=epochs,
                             batch_size=batch_size,
-                            callbacks=[model_checkpoint, reduce_lr, early_stopping], 
+                            callbacks=[model_checkpoint, reduce_lr], 
                             verbose=2)
 
     # second stage using lovasz loss
@@ -424,7 +422,7 @@ def main():
     reduce_lr = ReduceLROnPlateau(monitor='val_my_iou_metric_2', mode='max',
                                   factor=0.5, patience=5, min_lr=0.0001, verbose=1)
 
-    epochs = 50
+    epochs = 120
     batch_size = 32
     history = model.fit(x_train, y_train,
                         validation_data=[x_valid, y_valid], 
