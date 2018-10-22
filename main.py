@@ -22,24 +22,29 @@ from tensorflow.keras.models import load_model
 from tensorflow.keras.optimizers import Adam
 from tensorflow.keras.layers import Input, Conv2D, Conv2DTranspose, MaxPooling2D, concatenate, Dropout
 from tensorflow.keras.layers import BatchNormalization, Activation, Add, Flatten, Dense
+from tensorflow.keras.layers import GlobalAveragePooling2D, Reshape, multiply
 
 from tqdm import tqdm
 
+# model base name
+MODEL_TYPE = 'res_Unet_csSE_'
+MODEL_VERSION = 'V5'
+MODEL_BASE_NAME = MODEL_TYPE + MODEL_VERSION
 
 # resize image size for neural net
-img_size_orig = 101
-img_size_target = 101
+IMG_SIZE_ORIGINGIN = 101
+IMG_SIZE_TARGET = 101
 
 def upsample(img):
-    if img_size_ori == img_size_target:
+    if IMG_SIZE_ORIGIN == IMG_SIZE_TARGET:
         return img
-    return resize(img, (img_size_target, img_size_target), mode='constant', preserve_range=True)
+    return resize(img, (IMG_SIZE_TARGET, IMG_SIZE_TARGET), mode='constant', preserve_range=True)
 
 
 def downsample(img):
-    if img_size_ori == img_size_target:
+    if IMG_SIZE_ORIGIN == IMG_SIZE_TARGET:
         return img
-    return resize(img, (img_size_orig, img_size_orig), mode='constant', preserve_range=True)
+    return resize(img, (IMG_SIZE_ORIGIN, IMG_SIZE_ORIGIN), mode='constant', preserve_range=True)
 
 
 def get_coverage_class(val):
@@ -48,7 +53,7 @@ def get_coverage_class(val):
             return i
 
 
-def predict_result(model,x_test,img_size_target): 
+def predict_result(model,x_test,IMG_SIZE_TARGET): 
     # predict both orginal and reflect x
     x_test_reflect =  np.array([np.fliplr(x) for x in x_test])
     preds_test = model.predict(x_test)
@@ -243,33 +248,58 @@ def residual_block(blockInput, num_filters=16, activation = False):
     return x
 
 
+def squeeze_excite_block_cSE(input, ratio=2):
+    init = input
+
+    filters = K.int_shape(init)[-1]
+    se_shape = (1, 1, filters)
+
+    se = GlobalAveragePooling2D()(init)
+    se = Reshape(se_shape)(se)
+    se = Dense(filters // ratio, activation='relu', kernel_initializer='he_normal', use_bias=True)(se)
+    se = Dense(filters, activation='sigmoid', kernel_initializer='he_normal', use_bias=True)(se)
+
+    x = multiply([init, se])
+    return x
+
+
+def squeeze_excite_block_sSE(input):
+    sSE_scale = Conv2D(1, (1, 1), activation='sigmoid', padding="same", use_bias = True)(input)
+    return multiply([input, sSE_scale])
+
+
+def unet_layer(blockInput, num_filters, use_csSE_ratio = 2):
+    x = Conv2D(num_filters, (3, 3), activation=None, padding="same")(blockInput)
+    x = residual_block(x, num_filters )
+    x = residual_block(x, num_filters , activation = True)
+
+    if use_csSE_ratio > 0:
+        sSEx = squeeze_excite_block_sSE(x)
+        cSEx = squeeze_excite_block_cSE(x,ratio = use_csSE_ratio ) # modified 10/10/2018
+        x = Add()([sSEx, cSEx])
+
+    return x
+
+
 # Build model
-def build_model(input_layer, start_neurons, DropoutRatio = 0.5):
+def build_model(input_layer, start_neurons, DropoutRatio = 0.5, use_csSE_ratio=2):
     # 101 -> 50
-    conv1 = Conv2D(start_neurons * 1, (3, 3), activation=None, padding="same")(input_layer)
-    conv1 = residual_block(conv1,start_neurons * 1)
-    conv1 = residual_block(conv1,start_neurons * 1, True)
+    conv1 = unet_layer(input_layer, start_neurons * 1, use_csSE_ratio)
     pool1 = MaxPooling2D((2, 2))(conv1)
     pool1 = Dropout(DropoutRatio/2)(pool1)
 
     # 50 -> 25
-    conv2 = Conv2D(start_neurons * 2, (3, 3), activation=None, padding="same")(pool1)
-    conv2 = residual_block(conv2,start_neurons * 2)
-    conv2 = residual_block(conv2,start_neurons * 2, True)
+    conv2 = unet_layer(pool1, start_neurons * 2, use_csSE_ratio)
     pool2 = MaxPooling2D((2, 2))(conv2)
     pool2 = Dropout(DropoutRatio)(pool2)
 
     # 25 -> 12
-    conv3 = Conv2D(start_neurons * 4, (3, 3), activation=None, padding="same")(pool2)
-    conv3 = residual_block(conv3,start_neurons * 4)
-    conv3 = residual_block(conv3,start_neurons * 4, True)
+    conv3 = unet_layer(pool2, start_neurons * 4, use_csSE_ratio)
     pool3 = MaxPooling2D((2, 2))(conv3)
     pool3 = Dropout(DropoutRatio)(pool3)
 
     # 12 -> 6
-    conv4 = Conv2D(start_neurons * 8, (3, 3), activation=None, padding="same")(pool3)
-    conv4 = residual_block(conv4,start_neurons * 8)
-    conv4 = residual_block(conv4,start_neurons * 8, True)
+    conv4 = unet_layer(pool3, start_neurons * 8, use_csSE_ratio)
     pool4 = MaxPooling2D((2, 2))(conv4)
     pool4 = Dropout(DropoutRatio)(pool4)
 
@@ -339,7 +369,7 @@ def main():
     train_data['masks'] = [np.array(load_img(
         path_train + './data/train/masks/{}.png'.format(idx), grayscale=True)) / 255 for idx in tqdm(train_data.index)]
 
-    train_data['coverage'] = train_data.masks.map(np.sum) / pow(img_size_orig, 2)
+    train_data['coverage'] = train_data.masks.map(np.sum) / pow(IMG_SIZE_ORIGINGIN, 2)
 
     train_data['coverage_class'] = train_data.coverage.map(get_coverage_class)
 
@@ -352,8 +382,8 @@ def main():
     # Split data into train and test sets stratified by salt coverage
     ids_train, ids_valid, x_train, x_valid, y_train, y_valid, cov_train, cov_valid, depth_train, depth_valid = train_test_split(
         train_df_notempty.index.values,
-        np.array(train_df_notempty.images.map(upsample).tolist()).reshape(-1, img_size_target, img_size_target, 1), 
-        np.array(train_df_notempty.masks.map(upsample).tolist()).reshape(-1, img_size_target, img_size_target, 1), 
+        np.array(train_df_notempty.images.map(upsample).tolist()).reshape(-1, IMG_SIZE_TARGET, IMG_SIZE_TARGET, 1), 
+        np.array(train_df_notempty.masks.map(upsample).tolist()).reshape(-1, IMG_SIZE_TARGET, IMG_SIZE_TARGET, 1), 
         train_df_notempty.coverage.values,
         train_df_notempty.z.values,
         test_size=0.2, stratify=train_df_notempty.coverage_class, random_state=1337)
@@ -365,12 +395,12 @@ def main():
 
     # Build U-Net model
     # first stage
-    input_layer = Input((img_size_target, img_size_target, 1))
+    input_layer = Input((IMG_SIZE_TARGET, IMG_SIZE_TARGET, 1))
     output_layer = build_model(input_layer, 32, 0.25)
     model_pre = Model(input_layer, output_layer)
     model_pre.compile(loss="binary_crossentropy", optimizer='adam', metrics=[my_iou_metric])
 
-    model_pre_name = 'resnet_pre.model'
+    model_pre_name = MODEL_BASE_NAME + '_pre.model'
 
     model_checkpoint = ModelCheckpoint(model_pre_name, monitor='val_my_iou_metric', 
                                        mode = 'max', save_best_only=True, verbose=1)
@@ -391,8 +421,8 @@ def main():
     # this time we add all data back
     ids_train, ids_valid, x_train, x_valid, y_train, y_valid, cov_train, cov_valid, depth_train, depth_valid = train_test_split(
         train_df.index.values,
-        np.array(train_df.images.map(upsample).tolist()).reshape(-1, img_size_target, img_size_target, 1), 
-        np.array(train_df.masks.map(upsample).tolist()).reshape(-1, img_size_target, img_size_target, 1), 
+        np.array(train_df.images.map(upsample).tolist()).reshape(-1, IMG_SIZE_TARGET, IMG_SIZE_TARGET, 1), 
+        np.array(train_df.masks.map(upsample).tolist()).reshape(-1, IMG_SIZE_TARGET, IMG_SIZE_TARGET, 1), 
         train_df.coverage.values,
         train_df.z.values,
         test_size=0.2, stratify=train_df.coverage_class, random_state=1337)
@@ -413,7 +443,7 @@ def main():
     # Then the default threshod for pixel prediction is 0 instead of 0.5, as in my_iou_metric_2.
     model.compile(loss=lovasz_loss, optimizer='adam', metrics=[my_iou_metric_2])
 
-    model_name = 'resnet.model'
+    model_name = MODEL_BASE_NAME + '.model'
 
     early_stopping = EarlyStopping(monitor='val_my_iou_metric_2', mode='max',
                                    patience=20, verbose=1)
@@ -436,7 +466,7 @@ def main():
     model = load_model(model_name, custom_objects={'my_iou_metric_2': my_iou_metric_2,
                                                    'lovasz_loss': lovasz_loss})
 
-    preds_valid = predict_result(model, x_valid, img_size_target)
+    preds_valid = predict_result(model, x_valid, IMG_SIZE_TARGET)
 
     # Scoring for last model, choose threshold by validation data 
     thresholds_ori = np.linspace(0.3, 0.7, 31)
@@ -445,7 +475,7 @@ def main():
 
     # TODO: there are two ways of scoring the result. test them later
     ious = np.array(
-        [get_iou_vector(y_valid, preds_valid.reshape(-1, img_size_target, img_size_target, 1) > threshold) for threshold in tqdm(thresholds)])
+        [get_iou_vector(y_valid, preds_valid.reshape(-1, IMG_SIZE_TARGET, IMG_SIZE_TARGET, 1) > threshold) for threshold in tqdm(thresholds)])
     print(ious)
 
     # instead of using default 0 as threshold, use validation data to find the best threshold.
@@ -456,7 +486,7 @@ def main():
 
     # predict the result on test set
     x_test = np.array([upsample(np.array(load_img(
-        "./data/test/images/{}.png".format(idx), grayscale=True))) / 255 for idx in tqdm(test_df.index)]).reshape(-1, img_size_target, img_size_target, 1)
+        "./data/test/images/{}.png".format(idx), grayscale=True))) / 255 for idx in tqdm(test_df.index)]).reshape(-1, IMG_SIZE_TARGET, IMG_SIZE_TARGET, 1)
 
     preds_test = model.predict(x_test)
     # test time augmention
@@ -464,7 +494,7 @@ def main():
     preds_test2 = model.predict(x_test2)
     preds_test2 = np.array([np.fliplr(x) for x in preds_test2])
     preds_test = (preds_test + preds_test2) / 2
-    
+
     pred_dict = {idx: RLenc(np.round(downsample(preds_test[i]) > threshold_best)) for i, idx in enumerate(tqdm(test_df.index.values))}
 
     sub = pd.DataFrame.from_dict(pred_dict,orient='index')
