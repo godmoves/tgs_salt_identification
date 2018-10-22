@@ -343,15 +343,20 @@ def main():
 
     train_data['coverage_class'] = train_data.coverage.map(get_coverage_class)
 
+    # we exclude all data whose coverage is less than 1.5% but not fully empty
+    # this method can improve the training accuracy, but may not be good in all conditions
+    train_df_notempty = train_df[(train_df.coverage > 0.015) | (train_df.coverage == 0)]
+    print('remain data number:', len(train_df_notempty))
 
-    # split data into training and validation set
-    ids_train, ids_valid, x_train, x_valid, y_train, y_valid, cov_train, cov_test, depth_train, depth_test = train_test_split(
-        train_data.index.values,
-        np.array(train_data.images.map(upsample).tolist()).reshape(-1, img_size_target, img_size_target, 1),
-        np.array(train_data.masks.map(upsample).tolist()).reshape(-1, img_size_target, img_size_target, 1),
-        train_data.coverage.values,
-        train_data.z.values,
-        test_size=0.2, stratify=train_data.coverage_class, random_state=1337)
+
+    # Split data into train and test sets stratified by salt coverage
+    ids_train, ids_valid, x_train, x_valid, y_train, y_valid, cov_train, cov_valid, depth_train, depth_valid = train_test_split(
+        train_df_notempty.index.values,
+        np.array(train_df_notempty.images.map(upsample).tolist()).reshape(-1, img_size_target, img_size_target, 1), 
+        np.array(train_df_notempty.masks.map(upsample).tolist()).reshape(-1, img_size_target, img_size_target, 1), 
+        train_df_notempty.coverage.values,
+        train_df_notempty.z.values,
+        test_size=0.2, stratify=train_df_notempty.coverage_class, random_state=1337)
 
         # oooops, do not forget data augmentation
     # we augment the data by fliping left and right
@@ -384,6 +389,20 @@ def main():
                             verbose=2)
 
     # second stage using lovasz loss
+    # Split data into train and test sets stratified by salt coverage
+    # this time we add all data back
+    ids_train, ids_valid, x_train, x_valid, y_train, y_valid, cov_train, cov_valid, depth_train, depth_valid = train_test_split(
+        train_df.index.values,
+        np.array(train_df.images.map(upsample).tolist()).reshape(-1, img_size_target, img_size_target, 1), 
+        np.array(train_df.masks.map(upsample).tolist()).reshape(-1, img_size_target, img_size_target, 1), 
+        train_df.coverage.values,
+        train_df.z.values,
+        test_size=0.2, stratify=train_df.coverage_class, random_state=1337)
+
+    # data augmentation
+    x_train = np.append(x_train, [np.fliplr(x) for x in x_train], axis=0)
+    y_train = np.append(y_train, [np.fliplr(x) for x in y_train], axis=0)
+
     model_pre = load_model(model_pre_name, custom_objects={'my_iou_metric': my_iou_metric})
     # remove layter activation layer and use losvasz loss
     input_x = model_pre.layers[0].input
