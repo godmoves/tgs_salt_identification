@@ -459,6 +459,12 @@ def main():
         "./data/test/images/{}.png".format(idx), grayscale=True))) / 255 for idx in tqdm(test_df.index)]).reshape(-1, img_size_target, img_size_target, 1)
 
     preds_test = model.predict(x_test)
+    # test time augmention
+    x_test2 = np.array([np.fliplr(x) for x in x_test])
+    preds_test2 = model.predict(x_test2)
+    preds_test2 = np.array([np.fliplr(x) for x in preds_test2])
+    preds_test = (preds_test + preds_test2) / 2
+    
     pred_dict = {idx: RLenc(np.round(downsample(preds_test[i]) > threshold_best)) for i, idx in enumerate(tqdm(test_df.index.values))}
 
     sub = pd.DataFrame.from_dict(pred_dict,orient='index')
