@@ -56,7 +56,7 @@ Flip left and right then average.
 
 ### Notebook version
 
-Upload the `.ipynb` file to [Google Colab](https://colab.research.google.com), and change the runtime type to `GPU` or
+Upload the `.ipynb` file to [Google Colab](https://colab.research.google.com) and change the runtime type to `GPU` or
 `TPU`, then run all code step by step.
 
 Notice that you need to upload your kaggle token API to download the data.
@@ -76,6 +76,6 @@ Use `pip` to install what you need.
 
 #### Command
 
-Download and unzip all data and move them into folder `./data`.
+Download and unzip all data and move them into folder `./data`.  
 Then just type `python main.py` in the terminal.
 
