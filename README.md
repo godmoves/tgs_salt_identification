@@ -14,7 +14,39 @@ identifies if a subsurface target is salt or not.
 
 ## Method
 
-(WIP)
+### Model
+
+Unet with residual block
+
+### First stage
+
+```
+Data: exclude data whose coverage is smaller than 1.5% but not fully empty
+Data augmentation: flip left and right
+Loss: binary loss
+Optimizer: Adam
+Learning rate: 0.1 -> 0.0001
+Dropout rate: 0.25
+Epochs: 100
+Batch size: 32
+```
+
+### Second stage
+
+```
+Data: all data
+Data augmentation: flip left and right
+Loss: lovasz loss
+Optimizer: Adam
+Learning rate: 0.1 -> 0.0001
+Dropout rate: 0.25
+Epochs: 120
+Batch size: 32
+```
+
+### Test time augmentation
+
+Flip left and right then average.
 
 ## Usage
 
