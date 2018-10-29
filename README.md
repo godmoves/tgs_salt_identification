@@ -1,6 +1,6 @@
 # Code for Kaggle TGS salt identification challenge
 
-## background
+## Background
 
 Several areas of Earth with large accumulations of oil and gas also have huge deposits of salt below the surface.
 
@@ -12,14 +12,34 @@ To create the most accurate seismic images and 3D renderings, TGS (the world’s
 hoping Kaggle’s machine learning community will be able to build an algorithm that automatically and accurately 
 identifies if a subsurface target is salt or not.
 
-## method
+## Method
 
 (WIP)
 
-## conclusion
+## Usage
 
-(WIP)
+### Notebook version
 
-## usage
+Upload the `.ipynb` file to [Google Colab](https://colab.research.google.com), and change the runtime type to `GPU` or
+`TPU`, then run all code step by step.
 
-Just type `python main.py` in the terminal.
+Notice that you need to upload your kaggle token API to download the data.
+
+### Terminal version
+
+#### Dependencies
+
+- python3
+- tensorflow
+- numpy
+- sklean
+- pandas
+- tqdm
+
+Use `pip` to install what you need.
+
+#### Command
+
+Download and unzip all data and move them into folder `./data`.
+Then just type `python main.py` in the terminal.
+
