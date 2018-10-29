@@ -16,7 +16,9 @@ identifies if a subsurface target is salt or not.
 
 ### Model
 
-Unet with residual block
+```
+Unet with residual block, check model.py for more details.
+```
 
 ### First stage
 
@@ -46,7 +48,9 @@ Batch size: 32
 
 ### Test time augmentation
 
+```
 Flip left and right then average.
+```
 
 ## Usage
 
