@@ -20,7 +20,7 @@ MODEL_VERSION = 'V5'
 MODEL_BASE_NAME = MODEL_TYPE + MODEL_VERSION
 
 # Resize image size for neural net
-IMG_SIZE_ORIGINGIN = 101
+IMG_SIZE_ORIGIN = 101
 IMG_SIZE_TARGET = 101
 
 
@@ -39,7 +39,7 @@ def main():
     train_df['masks'] = [np.array(load_img(
         './data/train/masks/{}.png'.format(idx), grayscale=True)) / 255 for idx in tqdm(train_df.index)]
 
-    train_df['coverage'] = train_df.masks.map(np.sum) / pow(IMG_SIZE_ORIGINGIN, 2)
+    train_df['coverage'] = train_df.masks.map(np.sum) / pow(IMG_SIZE_ORIGIN, 2)
 
     train_df['coverage_class'] = train_df.coverage.map(get_coverage_class)
 
